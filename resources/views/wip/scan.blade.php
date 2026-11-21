@@ -74,11 +74,24 @@
         </div>
     </div>
 
-    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <script>
-        document.getElementById('stasiun_tujuan').addEventListener('change', function() {
-            document.getElementById('field-vendor').classList.toggle('hidden', this.value !== 'vendor_bordir');
-        });
+        let currentSpkData = null;
+
+        function sesuaikanJumlahInput() {
+            if (!currentSpkData) return;
+            const tujuan = document.getElementById('stasiun_tujuan').value;
+            document.getElementById('field-vendor').classList.toggle('hidden', tujuan !== 'vendor_bordir');
+
+            // Jika masih ada sisa barang reject/rework (> 0), tampilkan jumlah sisa rework tersebut (misal 60 pcs)
+            if (currentSpkData.total_reject > 0) {
+                document.getElementById('jumlah_pcs_diproses').value = currentSpkData.total_reject;
+            } else {
+                document.getElementById('jumlah_pcs_diproses').value = currentSpkData.pcs_lolos;
+            }
+        }
+
+        document.getElementById('stasiun_tujuan').addEventListener('change', sesuaikanJumlahInput);
 
         async function cariDataSpk(kode) {
             if (!kode) return;
@@ -87,19 +100,32 @@
             const infoBox = document.getElementById('info-spk');
 
             if (data.found) {
+                currentSpkData = data;
                 infoBox.classList.remove('hidden');
-                infoBox.innerHTML = `<strong>${data.pesanan.kode_spk}</strong> — ${data.pesanan.nama_pelanggan}<br>Model: ${data.pesanan.model_pakaian} (${data.pesanan.jumlah_pcs} pcs)<br>Status Saat Ini: <strong class="uppercase">${data.pesanan.status_produksi.replace('_', ' ')}</strong>`;
+                const infoReject = data.total_reject > 0 
+                    ? `<br><span class="text-red-600 font-bold">Catatan QC: ${data.pcs_lolos} pcs Lolos | ${data.total_reject} pcs Reject/Rework</span>` 
+                    : '';
+
+                infoBox.innerHTML = `<strong>${data.pesanan.kode_spk}</strong> — ${data.pesanan.nama_pelanggan}<br>
+                    Model: ${data.pesanan.model_pakaian} (Order: ${data.pesanan.jumlah_pcs} pcs)<br>
+                    Status Saat Ini: <strong class="uppercase">${data.pesanan.status_produksi.replace('_', ' ')}</strong>${infoReject}`;
+
                 document.getElementById('form_kode_spk').value = data.pesanan.kode_spk;
                 document.getElementById('input-kode-spk').value = data.pesanan.kode_spk;
-                document.getElementById('jumlah_pcs_diproses').value = data.pesanan.jumlah_pcs;
+
+                sesuaikanJumlahInput();
             } else {
                 alert(data.message);
             }
         }
 
-        const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 220 });
-        html5QrcodeScanner.render((decodedText) => {
-            cariDataSpk(decodedText);
+        document.addEventListener("DOMContentLoaded", function () {
+            if (typeof Html5QrcodeScanner !== "undefined") {
+                const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 220 });
+                html5QrcodeScanner.render((decodedText) => {
+                    cariDataSpk(decodedText);
+                });
+            }
         });
     </script>
 </x-app-layout>

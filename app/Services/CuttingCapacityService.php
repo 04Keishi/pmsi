@@ -54,7 +54,7 @@ class CuttingCapacityService
     }
 
     /**
-     * Memprediksi tanggal selesai per tahapan & tanggal akhir pesanan berdasarkan antrean cutting riil
+     * Memprediksi tanggal selesai per tahapan (Cutting, Bordir, Sewing, QC, & Packing/Final)
      */
     public function prediksiTimelinePesanan(Pesanan $targetPesanan): array
     {
@@ -62,9 +62,11 @@ class CuttingCapacityService
         $kapasitasHarian = ($setting->jumlah_operator_cutting ?? 2) * ($setting->jam_kerja_per_hari ?? 8);
         if ($kapasitasHarian <= 0) $kapasitasHarian = 16;
 
-        // 1. Hitung akumulasi jam antrean cutting di depan pesanan ini + pesanan ini sendiri
+        $status = $targetPesanan->status_produksi;
+
+        // 1. Prediksi Selesai Cutting
         $jamAntrean = 0;
-        if (in_array($targetPesanan->status_produksi, ['menunggu_bahan', 'antrean_cutting', 'proses_cutting'])) {
+        if (in_array($status, ['menunggu_bahan', 'antrean_cutting', 'proses_cutting'])) {
             $jamAntrean = Pesanan::whereIn('status_produksi', ['menunggu_bahan', 'antrean_cutting', 'proses_cutting'])
                 ->where('approval_manajer', '!=', 'ditolak')
                 ->where(function ($q) use ($targetPesanan) {
@@ -75,46 +77,61 @@ class CuttingCapacityService
                       });
                 })
                 ->sum('estimasi_jam_cutting');
-        }
 
-        // Konversi jam antrean cutting menjadi hari kerja (lewati hari Minggu)
-        $hariCutting = (int) ceil($jamAntrean / $kapasitasHarian);
-        $tglSelesaiCutting = $this->tambahHariKerja(Carbon::today(), $hariCutting);
-
-        // 2. Hitung estimasi waktu setelah cutting (Bordir + Sewing + QC + Packing)
-        $tglBerjalan = $tglSelesaiCutting->copy();
-
-        // Jika sudah lewat cutting, mulai hitung dari hari ini berdasarkan posisi stasiunnya
-        if (!in_array($targetPesanan->status_produksi, ['menunggu_bahan', 'antrean_cutting', 'proses_cutting'])) {
+            $hariCutting = (int) ceil($jamAntrean / $kapasitasHarian);
+            $tglSelesaiCutting = $this->tambahHariKerja(Carbon::today(), $hariCutting);
+            $tglBerjalan = $tglSelesaiCutting->copy();
+        } else {
+            // Jika sudah melewati tahap cutting
+            $tglSelesaiCutting = null;
             $tglBerjalan = Carbon::today();
         }
 
+        // 2. Prediksi Kembali Vendor Bordir (Jika pakai bordir)
         $tglSelesaiBordir = null;
-        if ($targetPesanan->pakai_bordir && in_array($targetPesanan->status_produksi, ['menunggu_bahan', 'antrean_cutting', 'proses_cutting', 'vendor_bordir'])) {
-            // Jika sudah di vendor & ada tanggal estimasi kembali dari vendor, gunakan tanggal itu
-            if ($targetPesanan->status_produksi === 'vendor_bordir' && $targetPesanan->vendorTerakhir?->tanggal_estimasi_kembali) {
+        if ($targetPesanan->pakai_bordir && in_array($status, ['menunggu_bahan', 'antrean_cutting', 'proses_cutting', 'vendor_bordir'])) {
+            if ($status === 'vendor_bordir' && $targetPesanan->vendorTerakhir?->tanggal_estimasi_kembali) {
                 $tglSelesaiBordir = Carbon::parse($targetPesanan->vendorTerakhir->tanggal_estimasi_kembali);
             } else {
-                $tglSelesaiBordir = $this->tambahHariKerja($tglBerjalan, 3); // Rata-rata vendor bordir 3 hari kerja
+                $tglSelesaiBordir = $this->tambahHariKerja($tglBerjalan, 3); // Estimasi 3 hari kerja vendor
             }
             $tglBerjalan = $tglSelesaiBordir->copy();
         }
 
-        // Estimasi Sewing + QC + Packing (asumsi kapasitas jahit & finishing rata-rata 50 pcs/hari, minimal 2 hari)
-        $hariHilir = max(2, (int) ceil($targetPesanan->jumlah_pcs / 50));
-        if ($targetPesanan->status_produksi === 'qc') $hariHilir = 1;
-        if ($targetPesanan->status_produksi === 'finishing_packing') $hariHilir = 1;
+        // 3. Prediksi Selesai Sewing (Asumsi kapasitas jahit rata-rata 65 pcs/hari, minimal 1 hari)
+        $tglSelesaiSewing = null;
+        if (in_array($status, ['menunggu_bahan', 'antrean_cutting', 'proses_cutting', 'vendor_bordir', 'sewing'])) {
+            $hariSewing = max(1, (int) ceil($targetPesanan->jumlah_pcs / 65));
+            $tglSelesaiSewing = $this->tambahHariKerja($tglBerjalan, $hariSewing);
+            $tglBerjalan = $tglSelesaiSewing->copy();
+        }
 
-        $tglPrediksiSelesai = $this->tambahHariKerja($tglBerjalan, $hariHilir);
+        // 4. Prediksi Selesai QC (Asumsi kapasitas pengecekan QC 150 pcs/hari, minimal 1 hari)
+        $tglSelesaiQc = null;
+        if (in_array($status, ['menunggu_bahan', 'antrean_cutting', 'proses_cutting', 'vendor_bordir', 'sewing', 'qc'])) {
+            $hariQc = max(1, (int) ceil($targetPesanan->jumlah_pcs / 150));
+            $tglSelesaiQc = $this->tambahHariKerja($tglBerjalan, $hariQc);
+            $tglBerjalan = $tglSelesaiQc->copy();
+        }
+
+        // 5. Prediksi Selesai Finishing & Packing / Final (1 hari kerja setelah QC)
+        if ($status === 'selesai') {
+            $tglPrediksiSelesai = Carbon::today();
+        } else {
+            $tglPrediksiSelesai = $this->tambahHariKerja($tglBerjalan, 1);
+        }
+
         $deadline = Carbon::parse($targetPesanan->tanggal_deadline);
-        $selisihHari = $tglPrediksiSelesai->diffInDays($deadline, false); // Positif = aman, Negatif = telat
+        $selisihHari = $tglPrediksiSelesai->diffInDays($deadline, false);
 
         return [
-            'tgl_selesai_cutting' => $tglSelesaiCutting->format('d M Y'),
-            'tgl_selesai_bordir'  => $tglSelesaiBordir?->format('d M Y'),
-            'tgl_prediksi_selesai'=> $tglPrediksiSelesai->format('d M Y'),
-            'selisih_hari'        => $selisihHari,
-            'status_prediksi'     => $selisihHari >= 0 ? 'ON TRACK' : 'RISIKO TELAT ' . abs($selisihHari) . ' HARI',
+            'tgl_selesai_cutting'  => $tglSelesaiCutting ? $tglSelesaiCutting->format('d M Y') : 'Sudah Selesai',
+            'tgl_selesai_bordir'   => $targetPesanan->pakai_bordir ? ($tglSelesaiBordir ? $tglSelesaiBordir->format('d M Y') : 'Sudah Selesai') : null,
+            'tgl_selesai_sewing'   => $tglSelesaiSewing ? $tglSelesaiSewing->format('d M Y') : 'Sudah Selesai',
+            'tgl_selesai_qc'       => $tglSelesaiQc ? $tglSelesaiQc->format('d M Y') : 'Sudah Selesai',
+            'tgl_prediksi_selesai' => $tglPrediksiSelesai->format('d M Y'),
+            'selisih_hari'         => $selisihHari,
+            'status_prediksi'      => $selisihHari >= 0 ? 'ON TRACK' : 'RISIKO TELAT ' . abs($selisihHari) . ' HARI',
         ];
     }
 

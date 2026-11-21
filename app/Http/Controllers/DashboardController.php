@@ -11,7 +11,7 @@ class DashboardController extends Controller
 {
     public function index(CuttingCapacityService $capacityService)
     {
-        $kapasitasMingguIni =$capacityService->hitungKapasitasTersedia(Carbon::today()->addDays(6)->format('Y-m-d'));
+        $kapasitasMingguIni = $capacityService->hitungKapasitasTersedia(Carbon::today()->addDays(6)->format('Y-m-d'));
 
         $pesananAktif = Pesanan::with(['kompleksitas', 'vendorTerakhir'])
             ->where('status_produksi', '!=', 'selesai')
@@ -24,6 +24,12 @@ class DashboardController extends Controller
                 return $item;
             });
 
+        // Query Riwayat SPK yang Sudah Selesai
+        $pesananSelesai = Pesanan::with(['kompleksitas', 'logs'])
+            ->where('status_produksi', 'selesai')
+            ->orderBy('updated_at', 'desc')
+            ->get();
+
         $rushOrdersMenunggu = Pesanan::where('is_rush_order', true)
             ->where('approval_manajer', 'menunggu')
             ->get();
@@ -31,23 +37,20 @@ class DashboardController extends Controller
         $stats = [
             'antrean_cutting' => $pesananAktif->whereIn('status_produksi', ['antrean_cutting', 'proses_cutting'])->count(),
             'di_vendor'       => $pesananAktif->where('status_produksi', 'vendor_bordir')->count(),
-            'berisiko_telat'  => $pesananAktif->filter(fn($p) => Carbon::parse($p->tanggal_deadline)->diffInDays(Carbon::today(), false) >= -2)->count(),
+            'berisiko_telat'  => $pesananAktif->filter(fn($p) => $p->prediksi['selisih_hari'] < 0)->count(),
         ];
 
-        
-
-        return view('dashboard', compact('kapasitasMingguIni', 'pesananAktif', 'rushOrdersMenunggu', 'stats'));
+        return view('dashboard', compact('kapasitasMingguIni', 'pesananAktif', 'pesananSelesai', 'rushOrdersMenunggu', 'stats'));
     }
 
-    public function keputusanRushOrder(Request $request, Pesanan$pesanan)
+    public function keputusanRushOrder(Request $request, Pesanan $pesanan)
     {
-        $request->validate(['keputusan' => 'required\vert{}in:disetujui,ditolak']);$pesanan->update([
+        $request->validate(['keputusan' => 'required|in:disetujui,ditolak']);
+        $pesanan->update([
             'approval_manajer' => $request->keputusan,
-            'urutan_prioritas' => $request->keputusan === 'disetujui' ? 1 :$pesanan->urutan_prioritas,
+            'urutan_prioritas' => $request->keputusan === 'disetujui' ? 1 : $pesanan->urutan_prioritas,
         ]);
 
         return back()->with('success', 'Status Rush Order berhasil diperbarui.');
     }
-
-    
 }

@@ -67,3 +67,5 @@ Route::post('/logout', function (Request $request) {
     $request->session()->regenerateToken();
     return redirect('/login');
 })->name('logout');
+
+Route::get('/pesanan/{pesanan}/detail', [PesananController::class, 'show'])->name('pesanan.show');
