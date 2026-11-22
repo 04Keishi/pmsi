@@ -1,8 +1,8 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex justify-between items-center">
-            <h2 class="font-semibold text-xl text-gray-800 leading-tight">Dashboard Produksi — PT Agra Kreasi Widyatama</h2>
-            <span class="px-3 py-1 text-xs font-bold rounded-full bg-indigo-100 text-indigo-800 uppercase">Role: {{ auth()->user()->role }}</span>
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+        <h2 class="font-semibold text-lg sm:text-xl text-gray-800 leading-tight">Dashboard Produksi - PT Agra Kreasi</h2>
+        <span class="w-fit px-3 py-1 text-xs font-bold rounded-full bg-indigo-100 text-indigo-800 uppercase">Role: {{ auth()->user()->role }}</span>
         </div>
     </x-slot>
 

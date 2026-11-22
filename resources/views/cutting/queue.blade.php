@@ -34,7 +34,7 @@
                                 <span class="px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded">RUSH ORDER</span>
                             @endif
                         </div>
-                        <p class="font-semibold mt-1">{{ $order->nama_pelanggan }} — {{ $order->model_pakaian }}</p>
+                        <p class="font-semibold mt-1">{{ $order->nama_pelanggan }} - {{ $order->model_pakaian }}</p>
                         <p class="text-xs text-gray-600">Kain: <strong>{{ $order->jenis_kain }}</strong> | Qty: <strong>{{ $order->jumlah_pcs }} pcs</strong> | Est. Cutting: <strong>{{ $order->estimasi_jam_cutting }} jam</strong> | Deadline: <strong>{{ $order->tanggal_deadline }}</strong></p>
                     </div>
 

@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{MasterKompleksitas, PengaturanKapasitas, PenyesuaianKapasitasHarian};
+use App\Models\{MasterKompleksitas, PengaturanKapasitas, PenyesuaianKapasitasHarian, Pesanan};
 use Illuminate\Http\Request;
 
 class KapasitasSettingController extends Controller
@@ -62,5 +62,31 @@ class KapasitasSettingController extends Controller
 
         MasterKompleksitas::create($request->only('nama_level', 'estimasi_menit_per_pcs', 'deskripsi'));
         return back()->with('success', 'Kategori kompleksitas pola ditambahkan.');
+    }
+
+    public function updateKompleksitas(Request $request, MasterKompleksitas $kompleksitas)
+    {
+        $request->validate([
+            'nama_level'             => 'required|string|max:50',
+            'estimasi_menit_per_pcs' => 'required|integer|min:1',
+            'deskripsi'              => 'nullable|string',
+        ]);
+
+        $kompleksitas->update($request->only('nama_level', 'estimasi_menit_per_pcs', 'deskripsi'));
+
+        return back()->with('success', "Kategori '{$kompleksitas->nama_level}' berhasil diperbarui.");
+    }
+
+    public function destroyKompleksitas(MasterKompleksitas $kompleksitas)
+    {
+        // Cegah penghapusan jika sudah dipakai oleh data pesanan agar tidak error foreign key
+        if (Pesanan::where('id_kompleksitas', $kompleksitas->id)->exists()) {
+            return back()->with('error', "Kategori '{$kompleksitas->nama_level}' tidak dapat dihapus karena masih digunakan oleh data pesanan.");
+        }
+
+        $nama = $kompleksitas->nama_level;
+        $kompleksitas->delete();
+
+        return back()->with('success', "Kategori '{$nama}' berhasil dihapus.");
     }
 }

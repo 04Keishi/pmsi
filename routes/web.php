@@ -40,6 +40,8 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/pengaturan-kapasitas/standar', [KapasitasSettingController::class, 'updateStandar'])->name('kapasitas.update-standar');
         Route::post('/pengaturan-kapasitas/penyesuaian', [KapasitasSettingController::class, 'storePenyesuaian'])->name('kapasitas.store-penyesuaian');
         Route::post('/pengaturan-kapasitas/kompleksitas', [KapasitasSettingController::class, 'storeKompleksitas'])->name('kapasitas.store-kompleksitas');
+        Route::patch('/pengaturan-kapasitas/kompleksitas/{kompleksitas}', [KapasitasSettingController::class, 'updateKompleksitas'])->name('kapasitas.update-kompleksitas');
+        Route::delete('/pengaturan-kapasitas/kompleksitas/{kompleksitas}', [KapasitasSettingController::class, 'destroyKompleksitas'])->name('kapasitas.destroy-kompleksitas');
     });
 });
 
